@@ -1,6 +1,15 @@
 use std::fs::File;
 use std::io::Write as _;
 
+fn vec3_to_u32(vec: &glm::DVec3) -> u32 {
+    let r = (255.999 * vec.x) as u32;
+    let g = (255.999 * vec.y) as u32;
+    let b = (255.999 * vec.z) as u32;
+    return r + (g << 8) + (b << 16);
+}
+
+type Point3 = glm::DVec3;
+
 struct Camera {}
 
 struct Renderer {
@@ -8,6 +17,8 @@ struct Renderer {
     pixels: Vec<u32>,
     width: usize,
     height: usize,
+    accum: Vec<glm::DVec3>,
+    accum_count: usize,
 }
 
 impl Renderer {
@@ -17,29 +28,33 @@ impl Renderer {
             pixels: vec![],
             width: 0,
             height: 0,
+            accum: vec![],
+            accum_count: 0,
         }
     }
 
     fn on_resize(&mut self, width: usize, height: usize) {
         self.pixels = vec![0; width * height];
+        self.accum = vec![glm::dvec3(0.0, 0.0, 0.0); width * height];
+        self.accum_count = 0;
         self.width = width;
         self.height = height;
     }
 
     fn render(&mut self) {
+        self.accum_count += 1;
         for j in 0..self.height {
-            let y = self.height - 1 - j;
-            println!("Scanlines remaining: {}", y);
-            for x in 0..self.width {
-                let r = x as f64 / (self.width - 1) as f64;
-                let g = y as f64 / (self.height - 1) as f64;
+            println!("Scanlines remaining: {}", self.height - 1 - j);
+            for i in 0..self.width {
+                let r = i as f64 / (self.width - 1) as f64;
+                let g = j as f64 / (self.height - 1) as f64;
                 let b = 0.25;
 
-                let ir = (255.999 * r) as u32;
-                let ig = (255.999 * g) as u32;
-                let ib = (255.999 * b) as u32;
+                self.accum[i + j * self.width] =
+                    self.accum[i + j * self.width] + glm::dvec3(r, g, b);
 
-                self.pixels[x + y * self.width] = ir + (ig << 8) + (ib << 16);
+                let color = self.accum[i + j * self.width] / self.accum_count as f64;
+                self.pixels[i + j * self.width] = vec3_to_u32(&color);
             }
         }
     }
@@ -48,13 +63,20 @@ impl Renderer {
         let mut file = File::create(filename).unwrap();
         let header = format!("P3\n{} {}\n255\n", self.width, self.height);
         file.write_all(header.as_bytes()).unwrap();
-        for pixel in &self.pixels {
-            let r = (pixel >> 0) & 0xFF;
-            let g = (pixel >> 8) & 0xFF;
-            let b = (pixel >> 16) & 0xFF;
-            let line = format!("{} {} {}\n", r, g, b);
-            file.write_all(line.as_bytes()).unwrap();
+
+        for j in 0..self.height {
+            let y = self.height - 1 - j;
+            for i in 0..self.width {
+                let x = i;
+                let pixel = self.pixels[x + y * self.width];
+                let r = (pixel >> 0) & 0xFF;
+                let g = (pixel >> 8) & 0xFF;
+                let b = (pixel >> 16) & 0xFF;
+                let line = format!("{} {} {}\n", r, g, b);
+                file.write_all(line.as_bytes()).unwrap();
+            }
         }
+
         println!("Saved image to {}", filename);
     }
 }
