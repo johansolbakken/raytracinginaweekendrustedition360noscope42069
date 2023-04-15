@@ -1,7 +1,13 @@
 use std::fs::File;
 use std::io::Write as _;
 
-use glm::{dvec3, dvec4};
+use camera::Camera;
+use ray::Ray;
+use scene::Scene;
+
+mod scene;
+mod camera;
+mod ray;
 
 // --------------- Utils ---------------
 
@@ -12,117 +18,28 @@ fn vec3_to_u32(vec: &glm::DVec4) -> u32 {
     return r + (g << 8) + (b << 16);
 }
 
-fn hit_sphere(center: &glm::DVec3, radius: f64, ray: &Ray) -> f64 {
-    let oc = ray.origin().clone() - center.clone();
-    let a = glm::dot(ray.direction().clone(), ray.direction().clone());
-    let b = 2.0 * glm::dot(oc, ray.direction().clone());
-    let c = glm::dot(oc, oc) - radius * radius;
-    let discriminant = b * b - 4.0 * a * c;
-    if discriminant < 0.0 {
-        return -1.0;
-    } else {
-        return (-b - discriminant.sqrt()) / (2.0 * a);
-    }
-}
-
 // --------------- Utils ---------------
 
-// --------------- Sphere ----------------
-
-// --------------- Sphere ----------------
-
-// --------------- Ray ---------------
-
-struct Ray {
-    origin: glm::DVec3,
-    direction: glm::DVec3,
-}
-
-impl Ray {
-    fn new(origin: glm::DVec3, direction: glm::DVec3) -> Ray {
-        Ray { origin, direction }
-    }
-
-    fn origin(&self) -> &glm::DVec3 {
-        &self.origin
-    }
-
-    fn direction(&self) -> &glm::DVec3 {
-        &self.direction
-    }
-
-    fn at(&self, t: f64) -> glm::DVec3 {
-        self.origin + self.direction * t
-    }
-}
-
-// --------------- Ray ---------------
-
-// --------------- Camera ---------------
-
-struct Camera {
-    viewport_width: f64,
-    viewport_height: f64,
-    focal_length: f64,
-
-    origin: glm::DVec3,
-    horizontal: glm::DVec3,
-    vertical: glm::DVec3,
-    lower_left_corner: glm::DVec3,
-
-    ray_directions: Vec<glm::DVec3>,
-}
-
-impl Camera {
-    fn new() -> Camera {
-        Camera {
-            viewport_width: 2.0,
-            viewport_height: 2.0,
-            focal_length: 1.0,
-
-            origin: glm::dvec3(0.0, 0.0, 0.0),
-            horizontal: glm::dvec3(0.0, 0.0, 0.0),
-            vertical: glm::dvec3(0.0, 0.0, 0.0),
-            lower_left_corner: glm::dvec3(0.0, 0.0, 0.0),
-
-            ray_directions: vec![],
-        }
-    }
-
-    fn on_update(&mut self) {
-        self.lower_left_corner = self.origin
-            - self.horizontal / 2.0
-            - self.vertical / 2.0
-            - glm::dvec3(0.0, 0.0, self.focal_length);
-    }
-
-    fn on_resize(&mut self, width: usize, height: usize) {
-        self.ray_directions = vec![glm::dvec3(0.0, 0.0, 0.0); width * height];
-
-        let aspect_ratio = width as f64 / height as f64;
-        self.viewport_width = aspect_ratio * self.viewport_height;
-        self.horizontal = glm::dvec3(self.viewport_width, 0.0, 0.0);
-        self.vertical = glm::dvec3(0.0, self.viewport_height, 0.0);
-
-        self.on_update();
-    }
-
-    fn move_to(&mut self, x: f64, y: f64) {
-        self.origin = glm::dvec3(x, y, 0.0);
-        self.on_update();
-    }
-
-    fn get_ray(&self, u: f64, v: f64) -> Ray {
-        Ray::new(
-            self.origin,
-            self.lower_left_corner + self.horizontal * u + self.vertical * v - self.origin,
-        )
-    }
-}
-
-// --------------- Camera ---------------
 
 // --------------- Renderer ---------------
+
+struct HitPayload {
+    hit_distance: f64,
+    world_position: glm::DVec3,
+    world_normal: glm::DVec3,
+    object_index: i32,
+}
+
+impl Default for HitPayload {
+    fn default() -> Self {
+        Self {
+            hit_distance: Default::default(),
+            world_position: glm::dvec3(0.0, 0.0, 0.0),
+            world_normal: glm::dvec3(0.0, 0.0, 0.0),
+            object_index: Default::default(),
+        }
+    }
+}
 
 struct Renderer {
     pixels: Vec<u32>,
@@ -151,12 +68,12 @@ impl Renderer {
         self.height = height;
     }
 
-    fn render(&mut self, camera: &Camera) {
+    fn render(&mut self, camera: &Camera, scene: &Scene) {
         self.frame_index += 1;
         for j in 0..self.height {
             println!("Scanlines remaining: {}", self.height - 1 - j);
             for i in 0..self.width {
-                let traced_color = self.per_pixel(i, j, camera);
+                let traced_color = self.per_pixel(i, j, camera, scene);
                 self.accum[i + j * self.width] = self.accum[i + j * self.width] + traced_color;
 
                 let color = self.accum[i + j * self.width] / self.frame_index as f64;
@@ -165,21 +82,91 @@ impl Renderer {
         }
     }
 
-    fn per_pixel(&mut self, x: usize, y: usize, camera: &Camera) -> glm::DVec4 {
+    fn per_pixel(&mut self, x: usize, y: usize, camera: &Camera, scene: &Scene) -> glm::DVec4 {
         let u = x as f64 / self.width as f64;
         let v = y as f64 / self.height as f64;
         let ray = camera.get_ray(u, v);
 
-        let t = hit_sphere(&glm::dvec3(0.0, 0.0, -1.0), 0.5, &ray);
-        if t > 0.0 {
-            let n = glm::normalize(ray.at(t) - dvec3(0.0, 0.0, -1.0));
-            let color = dvec3(n.x + 1.0, n.y + 1.0, n.z + 1.0) * 0.5;
-            return dvec4(color.x, color.y, color.z, 1.0);
+        let mut color = glm::dvec3(0.0, 0.0, 0.0);
+        let mut multiplier = 1.0;
+
+        let bounces = 5;
+        for _ in 0..bounces {
+            let payload: HitPayload = self.trace_ray(&ray, camera, scene);
+
+            if payload.hit_distance < 0.0 {
+                let unit_direction = glm::normalize(*ray.direction());
+                let t = 0.5 * (unit_direction.y + 1.0);
+                let sky_color =
+                    glm::dvec3(1.0, 1.0, 1.0) * (1.0 - t) + glm::dvec3(0.5, 0.7, 1.0) * t;
+                color = color + sky_color * multiplier;
+            }
+
+            color = color + glm::dvec3(1.0, 0.0, 0.0);
+
+            multiplier *= 0.5;
         }
 
-        let unit_direction = glm::normalize(ray.direction().clone());
-        let t = 0.5 * (unit_direction.y + 1.0);
-        return glm::dvec4(1.0, 1.0, 1.0, 1.0) * (1.0 - t) + glm::dvec4(0.5, 0.7, 1.0, 1.0) * t;
+        return glm::dvec4(color.x, color.y, color.z, 1.0);
+    }
+
+    fn trace_ray(&mut self, ray: &Ray, camera: &Camera, scene: &Scene) -> HitPayload {
+        let mut closest_sphere = -1;
+        let mut hit_distance = f64::INFINITY;
+
+        for (i, sphere) in scene.spheres.iter().enumerate() {
+            // Sphere intersection
+            let origin = *ray.origin() - *sphere.center();
+            let a = glm::dot(*ray.direction(), *ray.direction());
+            let b = 2.0 * glm::dot(origin, *ray.direction());
+            let c = glm::dot(origin, origin) - sphere.radius() * sphere.radius();
+            let discriminant = b * b - 4.0 * a * c;
+
+            if discriminant < 0.0 {
+                continue;
+            }
+
+            let closest_t = (-b - discriminant.sqrt()) / (2.0 * a);
+            if closest_t > 0.0 && closest_t < hit_distance {
+                closest_sphere = i as i32;
+                hit_distance = closest_t;
+            }
+        }
+
+        if closest_sphere < 0 {
+            self.miss(ray)
+        } else {
+            self.closest_hit(ray, hit_distance, closest_sphere, scene)
+        }
+    }
+
+    fn closest_hit(
+        &mut self,
+        ray: &Ray,
+        hit_distance: f64,
+        object_index: i32,
+        scene: &Scene,
+    ) -> HitPayload {
+        let sphere = &scene.spheres[object_index as usize];
+
+        let origin = *ray.origin() - *sphere.center();
+        let mut world_position = origin + *ray.direction() * hit_distance;
+        let world_normal = glm::normalize(world_position);
+        world_position = world_position + *sphere.center();
+
+        HitPayload {
+            hit_distance,
+            world_position,
+            world_normal,
+            object_index,
+        }
+    }
+
+    fn miss(&mut self, ray: &Ray) -> HitPayload {
+        HitPayload {
+            hit_distance: -1.0,
+            ..Default::default()
+        }
     }
 
     fn save(&self, filename: &str) {
@@ -207,6 +194,8 @@ impl Renderer {
 // --------------- Renderer ---------------
 
 fn main() {
+    let scene = Scene::new();
+
     let aspect_ratio = 16.0 / 9.0;
     let image_width = 600;
     let image_height = (image_width as f64 / aspect_ratio) as usize;
@@ -217,7 +206,7 @@ fn main() {
     let mut renderer = Renderer::new();
     renderer.on_resize(image_width, image_height);
     for _ in 0..1 {
-        renderer.render(&camera);
+        renderer.render(&camera, &scene);
     }
     renderer.save("image.ppm");
 }
