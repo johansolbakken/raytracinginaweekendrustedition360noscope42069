@@ -37,3 +37,8 @@ pub fn random_in_unit_sphere() -> glm::DVec3 {
         return p;
     }
 }
+
+pub fn near_zero(v: &glm::DVec3) -> bool {
+    let s = 1e-8;
+    (v.x.abs() < s) && (v.y.abs() < s) && (v.z.abs() < s)
+}

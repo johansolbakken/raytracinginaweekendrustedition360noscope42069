@@ -1,19 +1,19 @@
 use camera::Camera;
-use scene::Scene;
 use renderer::Renderer;
+use scene::Scene;
 
 mod camera;
 mod ray;
+mod renderer;
 mod scene;
 mod utils;
 mod vec3;
-mod renderer;
 
 fn main() {
     let scene = Scene::new();
 
     let aspect_ratio = 16.0 / 9.0;
-    let image_width = 600;
+    let image_width = 1024;
     let image_height = (image_width as f64 / aspect_ratio) as usize;
 
     let mut camera = Camera::new();
@@ -21,7 +21,7 @@ fn main() {
 
     let mut renderer = Renderer::new();
     renderer.on_resize(image_width, image_height);
-    let samples_per_pixel = 100;
+    let samples_per_pixel = 5;
     for _ in 0..samples_per_pixel {
         renderer.render(&camera, &scene);
     }

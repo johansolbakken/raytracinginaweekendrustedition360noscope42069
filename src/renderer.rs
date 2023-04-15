@@ -5,7 +5,7 @@ use crate::{
     camera::Camera,
     ray::Ray,
     scene::Scene,
-    utils::{self, random_f64},
+    utils::{self, near_zero, random_f64, random_vec3_range},
 };
 
 fn vec3_to_u32(vec: &glm::DVec4) -> u32 {
@@ -104,16 +104,27 @@ impl Renderer {
                 let sky_color =
                     glm::dvec3(1.0, 1.0, 1.0) * (1.0 - t) + glm::dvec3(0.5, 0.7, 1.0) * t;
                 color = color + sky_color * multiplier;
+                break;
             }
 
-            let sphere = &scene.spheres[payload.object_index as usize];
-            let target =
-                payload.world_position + payload.world_normal + utils::random_in_unit_sphere();
+            let light_dir = glm::normalize(glm::dvec3(-1.0, -1.0, -1.0));
+            let light_intensity = glm::max(glm::dot(payload.world_normal, -light_dir), 0.0); // cos(angle)
 
-            color = color + glm::dvec3(0.1, 0.1, 0.1) * multiplier * 0.5;
+            let sphere = &scene.spheres[payload.object_index as usize];
+            let material = &scene.materials[sphere.material_index()];
+
+            let mut sphere_color = material.albedo;
+            sphere_color = sphere_color * light_intensity;
+            color = color + sphere_color * multiplier;
+
             multiplier *= 0.5;
 
-            ray = Ray::new(payload.world_position, target - payload.world_position);
+            let new_origin = payload.world_position + payload.world_normal * 0.0001;
+            let new_direction = glm::reflect(
+                *ray.direction(),
+                payload.world_normal + random_vec3_range(-0.5, 0.5) * material.roughness,
+            );
+            ray = Ray::new(new_origin, new_direction);
         }
 
         return glm::dvec4(color.x, color.y, color.z, 1.0);

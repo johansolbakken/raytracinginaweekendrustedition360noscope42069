@@ -20,6 +20,10 @@ impl Sphere {
     pub fn center(&self) -> &glm::DVec3 {
         &self.center
     }
+
+    pub fn material_index(&self) -> usize {
+        self.material_index
+    }
 }
 
 pub struct Scene {
@@ -32,21 +36,28 @@ impl Scene {
         Scene {
             spheres: vec![
                 Sphere {
-                    center: glm::dvec3(0.0, 0.0, -1.0),
-                    radius: 0.5,
+                    center: glm::dvec3(0.0, 0.0, -2.0),
+                    radius: 1.0,
                     material_index: 0,
                 },
                 Sphere {
-                    center: glm::dvec3(0.0, -100.5, -1.0),
+                    center: glm::dvec3(0.0, -101.0, -2.0),
                     radius: 100.0,
-                    material_index: 0,
+                    material_index: 1,
                 },
             ],
-            materials: vec![Material {
-                albedo: glm::dvec3(0.8, 0.3, 0.3),
-                roughness: 0.0,
-                metallic: 0.0,
-            }],
+            materials: vec![
+                Material {
+                    albedo: glm::dvec3(1.0, 0.0, 1.0),
+                    roughness: 0.0,
+                    metallic: 0.0,
+                },
+                Material {
+                    albedo: glm::dvec3(0.2, 0.3, 1.0),
+                    roughness: 0.1,
+                    metallic: 0.0,
+                },
+            ],
         }
     }
 }
