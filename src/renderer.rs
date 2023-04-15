@@ -5,7 +5,7 @@ use crate::{
     camera::Camera,
     ray::Ray,
     scene::Scene,
-    utils::{self, near_zero, random_f64, random_vec3_range},
+    utils::{random_f64, random_vec3_range},
 };
 
 fn vec3_to_u32(vec: &glm::DVec4) -> u32 {
@@ -69,7 +69,6 @@ impl Renderer {
     pub fn render(&mut self, camera: &Camera, scene: &Scene) {
         self.frame_index += 1;
         for j in 0..self.height {
-            println!("Scanlines remaining: {}", self.height - 1 - j);
             for i in 0..self.width {
                 let color = self.per_pixel(i, j, camera, scene);
                 self.accum[i + j * self.width] = self.accum[i + j * self.width] + color;

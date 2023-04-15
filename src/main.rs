@@ -22,8 +22,11 @@ fn main() {
     let mut renderer = Renderer::new();
     renderer.on_resize(image_width, image_height);
     let samples_per_pixel = 5;
-    for _ in 0..samples_per_pixel {
+    for i in 0..samples_per_pixel {
+        let start = std::time::Instant::now();
         renderer.render(&camera, &scene);
+        let elapsed = start.elapsed();
+        println!("Render {}:\t{}ms\t{}fps", i, elapsed.as_millis(), 1000.0 / elapsed.as_millis() as f64);
     }
     renderer.save("image.ppm");
 }
