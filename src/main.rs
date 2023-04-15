@@ -1,6 +1,8 @@
 use std::fs::File;
 use std::io::Write as _;
 
+use glm::dvec4;
+
 // --------------- Utils ---------------
 
 fn vec3_to_u32(vec: &glm::DVec4) -> u32 {
@@ -10,7 +12,20 @@ fn vec3_to_u32(vec: &glm::DVec4) -> u32 {
     return r + (g << 8) + (b << 16);
 }
 
+fn hit_sphere(center: &glm::DVec3, radius: f64, ray: &Ray) -> bool {
+    let oc = ray.origin().clone() - center.clone();
+    let a = glm::dot(ray.direction().clone(), ray.direction().clone());
+    let b = 2.0 * glm::dot(oc, ray.direction().clone());
+    let c = glm::dot(oc, oc) - radius * radius;
+    let discriminant = b * b - 4.0 * a * c;
+    return discriminant > 0.0;
+}
+
 // --------------- Utils ---------------
+
+// --------------- Sphere ----------------
+
+// --------------- Sphere ----------------
 
 // --------------- Ray ---------------
 
@@ -150,6 +165,10 @@ impl Renderer {
         let u = x as f64 / self.width as f64;
         let v = y as f64 / self.height as f64;
         let ray = camera.get_ray(u, v);
+
+        if hit_sphere(&glm::dvec3(0.0, 0.0, -1.0), 0.5, &ray) {
+            return dvec4(1.0, 0.0, 0.0, 1.0);
+        }
 
         let unit_direction = glm::normalize(ray.direction().clone());
         let t = 0.5 * (unit_direction.y + 1.0);
