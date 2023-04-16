@@ -49,7 +49,7 @@ impl Camera {
         self.on_update();
     }
 
-    fn move_to(&mut self, x: f64, y: f64) {
+    fn _move_to(&mut self, x: f64, y: f64) {
         self.origin = glm::dvec3(x, y, 0.0);
         self.on_update();
     }
