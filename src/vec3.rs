@@ -1,2 +1,2 @@
-pub type vec3 = glm::DVec3;
-pub type color3 = vec3;
+pub type Vec3 = glm::DVec3;
+pub type Color3 = Vec3;
