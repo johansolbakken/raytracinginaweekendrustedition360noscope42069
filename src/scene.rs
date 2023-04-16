@@ -1,7 +1,7 @@
-use crate::vec3::vec3;
+use crate::vec3::Vec3;
 
 pub struct Material {
-    pub albedo: vec3,
+    pub albedo: Vec3,
     pub roughness: f64,
     pub metallic: f64,
 }
@@ -13,6 +13,14 @@ pub struct Sphere {
 }
 
 impl Sphere {
+    pub fn new(center: glm::DVec3, radius: f64, material_index: usize) -> Sphere {
+        Sphere {
+            center,
+            radius,
+            material_index,
+        }
+    }
+
     pub fn radius(&self) -> f64 {
         self.radius
     }
