@@ -20,3 +20,9 @@ impl Ray {
         self.origin + self.direction * t
     }
 }
+
+impl Default for Ray {
+    fn default() -> Self {
+        Self::new(glm::dvec3(0.0, 0.0, 0.0), glm::dvec3(0.0, 0.0, 0.0))
+    }
+}

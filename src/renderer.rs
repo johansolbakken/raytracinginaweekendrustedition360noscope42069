@@ -4,11 +4,15 @@ use std::io::Write as _;
 use crate::{
     camera::Camera,
     ray::Ray,
-    scene::Scene,
-    utils::{random_f64, random_vec3_range},
+    scene::{Scene, Sphere},
+    utils::{
+        near_zero, random_f64, random_in_hemisphere, random_in_unit_sphere, random_unit_vec3,
+        random_vec3_range, some_kind_of_gamma,
+    },
+    vec3::Color3,
 };
 
-fn vec3_to_u32(vec: &glm::DVec4) -> u32 {
+fn vec4_to_u32(vec: &glm::DVec4) -> u32 {
     let r = (255.0 * vec.x) as u32;
     let g = (255.0 * vec.y) as u32;
     let b = (255.0 * vec.z) as u32;
@@ -21,6 +25,7 @@ fn vec3_to_u32(vec: &glm::DVec4) -> u32 {
 
 // --------------- Renderer ---------------
 
+#[derive(Clone)]
 struct HitPayload {
     hit_distance: f64,
     world_position: glm::DVec3,
@@ -80,7 +85,7 @@ impl Renderer {
                     glm::dvec4(0.0, 0.0, 0.0, 0.0),
                     glm::dvec4(1.0, 1.0, 1.0, 1.0),
                 );
-                self.pixels[i + j * self.width] = vec3_to_u32(&accumulated_color);
+                self.pixels[i + j * self.width] = vec4_to_u32(&accumulated_color);
             }
         }
     }
@@ -187,6 +192,175 @@ impl Renderer {
             ..Default::default()
         }
     }
+
+    // ---------------------------- recursive render ----------------------------
+
+    // This renderer matches more closely the ray tracing in weekend book
+    // Instead of doing anti-aliasing by sampling the pixel, we just accumulate the color
+
+    pub fn render_recurse(&mut self, camera: &Camera, scene: &Scene) {
+        let max_depth = 50;
+
+        self.frame_index += 1;
+
+        for j in 0..self.height {
+            for i in 0..self.width {
+                // Calculating u, v
+                let u = (i as f64 + random_f64()) / (self.width - 1) as f64;
+                let v = (j as f64 + random_f64()) / (self.height - 1) as f64;
+
+                // Calculating ray
+                let ray = camera.get_ray(u, v);
+                let color = self.pixel_color(&ray, scene, max_depth);
+
+                // Accumulating color
+                self.accum[i + j * self.width] =
+                    self.accum[i + j * self.width] + glm::dvec4(color.x, color.y, color.z, 1.0);
+
+                // Averaging color
+                let mut accum_color = self.accum[i + j * self.width] / self.frame_index as f64;
+                accum_color = glm::clamp(
+                    accum_color,
+                    glm::dvec4(0.0, 0.0, 0.0, 0.0),
+                    glm::dvec4(1.0, 1.0, 1.0, 1.0),
+                );
+                accum_color = some_kind_of_gamma(&accum_color);
+
+                // Setting pixel color
+                self.pixels[i + j * self.width] = vec4_to_u32(&accum_color);
+            }
+        }
+    }
+
+    fn pixel_color(&mut self, ray: &Ray, scene: &Scene, depth: u32) -> Color3 {
+        // If we've exceeded the ray bounce limit, no more light is gathered.
+        if depth == 0 {
+            return glm::dvec3(0.0, 0.0, 0.0);
+        }
+
+        let mut rec = HitPayload::default();
+        if self.world_hit(scene, ray, 0.001, f64::MAX, &mut rec) {
+            let mut scattered = Ray::default();
+            let mut attenuation = glm::dvec3(0.0, 0.0, 0.0);
+
+            let sphere = &scene.spheres[rec.object_index as usize];
+            if self.scatter(
+                sphere.material_index(),
+                scene,
+                ray,
+                &mut rec,
+                &mut attenuation,
+                &mut scattered,
+            ) {
+                return attenuation * self.pixel_color(&scattered, scene, depth - 1);
+            }
+
+            return glm::dvec3(0.0, 0.0, 0.0);
+        }
+
+        // Background gradient
+        let unit_direction = glm::normalize(*ray.direction());
+        let t = 0.5 * (unit_direction.y + 1.0);
+        return glm::dvec3(1.0, 1.0, 1.0) * (1.0 - t) + glm::dvec3(0.5, 0.7, 1.0) * t;
+    }
+
+    fn world_hit(
+        &mut self,
+        scene: &Scene,
+        ray: &Ray,
+        t_min: f64,
+        t_max: f64,
+        rec: &mut HitPayload,
+    ) -> bool {
+        let mut hit_anything = false;
+        let mut closest_so_far = t_max;
+
+        for (i, sphere) in scene.spheres.iter().enumerate() {
+            let mut temp_rec = HitPayload::default();
+            if self.sphere_hit(sphere, scene, ray, t_min, closest_so_far, &mut temp_rec) {
+                hit_anything = true;
+                closest_so_far = temp_rec.hit_distance;
+                *rec = temp_rec.clone();
+                rec.object_index = i as i32;
+            }
+        }
+
+        return hit_anything;
+    }
+
+    fn sphere_hit(
+        &mut self,
+        sphere: &Sphere,
+        scene: &Scene,
+        r: &Ray,
+        t_min: f64,
+        t_max: f64,
+        rec: &mut HitPayload,
+    ) -> bool {
+        let oc = *r.origin() - *sphere.center();
+        let a = glm::length(*r.direction()).powf(2.0);
+        let half_b = glm::dot(oc, *r.direction());
+        let c = glm::length(oc).powf(2.0) - sphere.radius() * sphere.radius();
+
+        let discriminant = half_b * half_b - a * c;
+        if discriminant < 0.0 {
+            return false;
+        }
+
+        let sqrtd = discriminant.sqrt();
+
+        // Find the nearest root that lies in the acceptable range.
+        let mut root = (-half_b - sqrtd) / a;
+        if root < t_min || t_max < root {
+            root = (-half_b + sqrtd) / a;
+            if root < t_min || t_max < root {
+                return false;
+            }
+        }
+
+        rec.hit_distance = root;
+        rec.world_position = r.at(rec.hit_distance);
+        let outward_normal = (rec.world_position - *sphere.center()) / sphere.radius();
+        let front_face = glm::dot(*r.direction(), outward_normal) < 0.0;
+        rec.world_normal = if front_face {
+            outward_normal
+        } else {
+            -outward_normal
+        };
+
+        // Offset the hit point to avoid shadow acne
+        rec.world_position = rec.world_position + rec.world_normal * 0.0001;
+
+        return true;
+    }
+
+    fn scatter(
+        &mut self,
+        material_index: usize,
+        scene: &Scene,
+        r_in: &Ray,
+        rec: &mut HitPayload,
+        attenuation: &mut Color3,
+        scattered: &mut Ray,
+    ) -> bool {
+        let material = &scene.materials[material_index];
+        let mut scatter_direction = glm::reflect(
+            glm::normalize(*r_in.direction()),
+            rec.world_normal + random_vec3_range(-0.5, 0.5) * material.roughness,
+        );
+
+        // Catch degenerate scatter direction
+        if near_zero(&scatter_direction) {
+            scatter_direction = rec.world_normal;
+        }
+
+        *scattered = Ray::new(rec.world_position, scatter_direction);
+        *attenuation = material.albedo;
+
+        return glm::dot(*scattered.direction(), rec.world_normal) > 0.0;
+    }
+
+    // ---------------------------- recursive render ----------------------------
 
     pub fn save(&self, filename: &str) {
         let mut file = File::create(filename).unwrap();
