@@ -10,6 +10,10 @@ mod utils;
 mod vec3;
 
 fn main() {
+    //
+    //  Dielectric - fun next habbajuja
+    //
+
     let ray_tracing_in_one_weekend = true;
     let mut scene = Scene::new();
 
