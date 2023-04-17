@@ -5,10 +5,7 @@ use crate::{
     camera::Camera,
     ray::Ray,
     scene::{Scene, Sphere},
-    utils::{
-        near_zero, random_f64, random_in_hemisphere, random_in_unit_sphere, random_unit_vec3,
-        random_vec3_range, some_kind_of_gamma,
-    },
+    utils::{self, near_zero, random_f64, random_vec3_range, some_kind_of_gamma},
     vec3::Color3,
 };
 
@@ -31,6 +28,9 @@ struct HitPayload {
     world_position: glm::DVec3,
     world_normal: glm::DVec3,
     object_index: i32,
+
+    // ray tracing in one weekend
+    front_face: bool,
 }
 
 impl Default for HitPayload {
@@ -40,6 +40,7 @@ impl Default for HitPayload {
             world_position: glm::dvec3(0.0, 0.0, 0.0),
             world_normal: glm::dvec3(0.0, 0.0, 0.0),
             object_index: Default::default(),
+            front_face: Default::default(),
         }
     }
 }
@@ -134,7 +135,7 @@ impl Renderer {
         return glm::dvec4(color.x, color.y, color.z, 1.0);
     }
 
-    fn trace_ray(&mut self, ray: &Ray, camera: &Camera, scene: &Scene) -> HitPayload {
+    fn trace_ray(&mut self, ray: &Ray, _camera: &Camera, scene: &Scene) -> HitPayload {
         let mut closest_sphere = -1;
         let mut hit_distance = f64::INFINITY;
 
@@ -183,10 +184,11 @@ impl Renderer {
             world_position,
             world_normal,
             object_index,
+            ..Default::default()
         }
     }
 
-    fn miss(&mut self, ray: &Ray) -> HitPayload {
+    fn miss(&mut self, _ray: &Ray) -> HitPayload {
         HitPayload {
             hit_distance: -1.0,
             ..Default::default()
@@ -291,7 +293,7 @@ impl Renderer {
     fn sphere_hit(
         &mut self,
         sphere: &Sphere,
-        scene: &Scene,
+        _scene: &Scene,
         r: &Ray,
         t_min: f64,
         t_max: f64,
@@ -330,6 +332,7 @@ impl Renderer {
 
         // Offset the hit point to avoid shadow acne
         rec.world_position = rec.world_position + rec.world_normal * 0.0001;
+        rec.front_face = front_face;
 
         return true;
     }
@@ -344,6 +347,36 @@ impl Renderer {
         scattered: &mut Ray,
     ) -> bool {
         let material = &scene.materials[material_index];
+
+        // Dielectrics
+        if material.glass {
+            *attenuation = glm::dvec3(1.0, 1.0, 1.0);
+            let refraction_ratio = if rec.front_face {
+                1.0 / material.refraction_index
+            } else {
+                material.refraction_index
+            };
+
+            // Why do I not get hollow sphere as in the book?
+
+            let unit_direction = glm::normalize(*r_in.direction());
+            let cos_theta = glm::min(glm::dot(-unit_direction, rec.world_normal), 1.0);
+            let sin_theta = (1.0 - cos_theta * cos_theta).sqrt();
+
+            let cannot_refract = refraction_ratio * sin_theta > 1.0;
+            let direction = if cannot_refract
+                || (utils::reflectance(cos_theta, refraction_ratio) > utils::random_f64())
+            {
+                glm::reflect(unit_direction, rec.world_normal)
+            } else {
+                glm::refract(unit_direction, rec.world_normal, refraction_ratio)
+            };
+
+            *scattered = Ray::new(rec.world_position, direction);
+            return true;
+        }
+
+        // Lamberian and metal
         let mut scatter_direction = glm::reflect(
             glm::normalize(*r_in.direction()),
             rec.world_normal + random_vec3_range(-0.5, 0.5) * material.roughness,

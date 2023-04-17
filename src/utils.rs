@@ -1,3 +1,5 @@
+use crate::vec3::Color3;
+
 pub fn random_f64() -> f64 {
     rand::random::<f64>()
 }
@@ -6,7 +8,7 @@ pub fn random_f64_range(min: f64, max: f64) -> f64 {
     min + (max - min) * random_f64()
 }
 
-pub fn random_vec3() -> glm::DVec3 {
+pub fn _random_vec3() -> glm::DVec3 {
     glm::dvec3(random_f64(), random_f64(), random_f64())
 }
 
@@ -18,7 +20,7 @@ pub fn random_vec3_range(min: f64, max: f64) -> glm::DVec3 {
     )
 }
 
-pub fn random_unit_vec3() -> glm::DVec3 {
+pub fn _random_unit_vec3() -> glm::DVec3 {
     glm::normalize(random_in_unit_sphere())
 }
 
@@ -59,4 +61,16 @@ pub fn random_in_hemisphere(normal: &glm::DVec3) -> glm::DVec3 {
     } else {
         return -in_unit_sphere;
     }
+}
+
+// Slick approximation
+pub fn reflectance(cosine: f64, ref_idx: f64) -> f64 {
+    // Use Schlick's approximation for reflectance.
+    let mut r0 = (1.0 - ref_idx) / (1.0 + ref_idx);
+    r0 = r0 * r0;
+    r0 + (1.0 - r0) * (1.0 - cosine).powf(5.0)
+}
+
+pub fn random_color() -> Color3 {
+    Color3::new(random_f64(), random_f64(), random_f64())
 }
