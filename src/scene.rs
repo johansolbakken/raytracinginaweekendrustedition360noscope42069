@@ -29,6 +29,7 @@ pub struct Sphere {
     center: glm::DVec3,
     radius: f64,
     material_index: usize,
+    
 }
 
 impl Sphere {

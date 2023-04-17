@@ -8,13 +8,15 @@ mod renderer;
 mod scene;
 mod utils;
 mod vec3;
+mod aabb;
+mod bvh;
 
 fn main() {
     //
     //  Dielectric - fun next habbajuja
     //
 
-    let ray_tracing_in_one_weekend = true;
+    let ray_tracing_in_one_weekend = false;
     let mut scene = Scene::new();
 
     let aspect_ratio = 3.0 / 2.0;
